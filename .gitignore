@@ -1,0 +1,11 @@
+.DS_Store
+*.pyc
+/Multivariate_ts
+/train/checkpoints
+/train/summary_results
+/experiments
+/lightning_logs
+*.pth
+/train/Multivariate_ts
+/train/results_v1
+/.venv
