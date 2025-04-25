@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
+import torch.nn.functional as F
 import math
+from sklearn.metrics import balanced_accuracy_score, f1_score
 
 class FocalLoss(nn.Module):
     def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
@@ -9,6 +11,8 @@ class FocalLoss(nn.Module):
         self.alpha = alpha  # Class weights tensor
         self.gamma = gamma
         self.reduction = reduction
+
+        
 
     def forward(self, inputs, targets):
         ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.alpha)
@@ -21,14 +25,15 @@ class FocalLoss(nn.Module):
             return focal_loss.sum()
         return focal_loss
 
-class TimeSeriesTransformerClassifier(pl.LightningModule):
+class VTimeSeriesTransformerClassifier(pl.LightningModule):
     def __init__(self, input_dim, num_classes, seq_length, class_weights, num_heads=4, num_layers=3, dropout=0.2):
         super().__init__()
         self.seq_length = seq_length
         self.input_dim = input_dim
-        #self.loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        self.loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        self.validation_outputs = []  # store outputs here
 
-        self.loss_fn = FocalLoss(alpha=class_weights, gamma=2.0)
+        # self.loss_fn = FocalLoss(alpha=class_weights, gamma=2.0)
 
         self.positional_encoding = self.create_positional_encoding(seq_length, input_dim)
         encoder_layers = nn.TransformerEncoderLayer(d_model=input_dim, nhead=num_heads, dropout=dropout, batch_first=True)
@@ -56,11 +61,32 @@ class TimeSeriesTransformerClassifier(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        loss = self.loss_fn(self(x), y)
-        self.log("val_loss", loss, prog_bar=True)
+        logits = self(x)
+        loss = self.loss_fn(logits, y)
+        preds = logits.argmax(dim=-1)
+        
+        self.validation_outputs.append({'loss': loss, 'preds': preds, 'targets': y})
+        
         return loss
 
+    def on_validation_epoch_end(self):
+        preds = torch.cat([o['preds'] for o in self.validation_outputs])
+        targets = torch.cat([o['targets'] for o in self.validation_outputs])
+        val_loss = torch.stack([o['loss'] for o in self.validation_outputs]).mean()
+
+        balanced_acc = balanced_accuracy_score(targets.cpu(), preds.cpu())
+        f1 = f1_score(targets.cpu(), preds.cpu(), average='weighted')
+
+        self.log_dict({
+            'val_loss': val_loss,
+            'balanced_acc': balanced_acc,
+            'f1': f1
+        }, prog_bar=True)
+
+        # Clear for next epoch
+        self.validation_outputs.clear()
+
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=0.005)
+        optimizer = torch.optim.Adam(self.parameters(), lr=0.0005)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
         return [optimizer], [scheduler]

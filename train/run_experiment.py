@@ -2,6 +2,7 @@ from batch_train import train_and_evaluate
 from collections import defaultdict
 import pandas as pd
 from models.timeformer_classifier import TimeSeriesTransformerClassifier
+from models.vanilla_transformer_classifier import VTimeSeriesTransformerClassifier
 from models.lstm import BTimeSeriesLSTMClassifier
 from datetime import datetime
 import os
@@ -20,17 +21,23 @@ def transformer_fn(**kwargs):
 def lstm_fn(**kwargs):
     return BTimeSeriesLSTMClassifier(**kwargs)
 
+def vanilla_transformer_fn(**kwargs):
+    return VTimeSeriesTransformerClassifier(
+        **kwargs,
+        dropout=0.2
+    )
+
 # Pick model function
 chosen_model = transformer_fn  # or lstm_fn
 
 
 # === Datasets you want to test ===
 datasets = [
-    # "JapaneseVowels",
+    "JapaneseVowels",
     "Libras",
-    # "ArticularyWordRecognition",
-    # "StandWalkJump",
-    # "HandMovementDirection"
+    "ArticularyWordRecognition",
+    "StandWalkJump",
+    "HandMovementDirection"
 ]
 
 # === Store all run results ===
