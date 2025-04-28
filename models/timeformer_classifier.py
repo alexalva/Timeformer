@@ -165,6 +165,8 @@ class TimeSeriesTransformerClassifier(pl.LightningModule):
         self.loss_fn = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
         # self.loss_fn = FocalLoss(alpha=class_weights, gamma=1.0)
 
+        self.recon_loss_fn = nn.MSELoss()
+
         self.validation_outputs = []  # store outputs here
 
           # === Conv1D Frontend ===
@@ -255,6 +257,11 @@ class TimeSeriesTransformerClassifier(pl.LightningModule):
         # Final classifier after fusion
         self.output_layer = nn.Linear(input_dim * 2, num_classes)
 
+        # === Smart Masking hyperparams ===
+        self.theta = 0.5
+        self.alpha = 0.15
+        self.lambda_recon = 0.1  # reconstruction loss weight
+
 
     def create_positional_encoding(self, seq_len, dim):
         pe = torch.zeros(seq_len, dim)
@@ -275,12 +282,32 @@ class TimeSeriesTransformerClassifier(pl.LightningModule):
 
         # === Temporal Transformer ===
         x_time = x + self.positional_encoding_time.to(x.device)
+        original_x_time = x_time.clone()  # Save for reconstruction
 
         # x_time = self.temporal_transformer(x_time)  # [B, T, C]
         temporal_attn_weights = []  # 👈 store for visualization
-        for layer in self.temporal_layers:
+        for idx, layer in enumerate(self.temporal_layers):
             x_time, attn = layer(x_time)
-            temporal_attn_weights.append(attn)  # attn shape: [B, nhead, T, T]
+            temporal_attn_weights.append(attn)
+
+            # Apply smart masking after the first layer only
+            if self.training and idx == 0:
+                first_attn = attn.mean(dim=1)
+                importance_scores = first_attn.sum(dim=1)
+                importance_scores = importance_scores / importance_scores.sum(dim=1, keepdim=True)
+
+                num_crucial = int(self.theta * self.seq_length)
+                num_masked = int(self.alpha * self.seq_length)
+
+                _, top_indices = torch.topk(importance_scores, num_crucial, dim=1)
+
+                mask = torch.zeros_like(importance_scores, dtype=torch.bool)
+                for i in range(batch_size):
+                    chosen = top_indices[i, torch.randperm(num_crucial)[:num_masked]]
+                    mask[i, chosen] = True
+
+                x_time[mask] = 0
+
 
         x_time_pooled = x_time.mean(dim=1)         # [B, C]
 
@@ -310,14 +337,19 @@ class TimeSeriesTransformerClassifier(pl.LightningModule):
         fused = torch.cat([C * g1, S * g2], dim=-1)       # [B, 2C]
         fused = self.dropout(fused)
         if return_attn:
-            return self.output_layer(fused), temporal_attn_weights, channel_attn_weights
+            return self.output_layer(fused), temporal_attn_weights, channel_attn_weights, original_x_time, x_time
         else:
             return self.output_layer(fused)                 # [B, num_classes]
 
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        loss = self.loss_fn(self(x), y)
+        output, temporal_attn, channel_attn, original_x_time, masked_x_time = self(x, return_attn=True)
+
+        classification_loss = self.loss_fn(output, y)
+        reconstruction_loss = self.recon_loss_fn(masked_x_time, original_x_time)
+
+        loss = classification_loss + self.lambda_recon * reconstruction_loss
         self.log("train_loss", loss, prog_bar=True)
         return loss
 

@@ -42,3 +42,8 @@ def load_dataset(dataset_name, extract_path, batch_size=16):
     test_loader = DataLoader(TensorDataset(X_test_tensor, y_test_tensor), batch_size=batch_size, shuffle=False)
 
     return (X_train_tensor, y_train_tensor), (X_test_tensor, y_test_tensor), train_loader, test_loader, label_encoder
+
+extract_path = "./Multivariate_ts"
+dataset = "AtrialFibrillation"
+
+(X_train, y_train), (X_test, y_test), train_loader, test_loader, label_encoder = load_dataset(dataset, extract_path)

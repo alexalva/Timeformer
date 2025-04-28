@@ -12,9 +12,9 @@ def transformer_fn(**kwargs):
     return TimeSeriesTransformerClassifier(
         **kwargs,
         num_heads_temporal=16,
-        num_layers_temporal=2,
+        num_layers_temporal=4,
         num_heads_channel=8,
-        num_layers_channels=2,
+        num_layers_channels=4,
         dropout=0.2
     )
 
@@ -33,11 +33,11 @@ chosen_model = transformer_fn  # or lstm_fn
 
 # === Datasets you want to test ===
 datasets = [
-    "JapaneseVowels",
+    # "JapaneseVowels",
     "Libras",
-    "ArticularyWordRecognition",
-    "StandWalkJump",
-    "HandMovementDirection"
+    # "ArticularyWordRecognition",
+    # "StandWalkJump",
+    # "HandMovementDirection"
 ]
 
 # === Store all run results ===

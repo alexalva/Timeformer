@@ -31,11 +31,11 @@ def train_and_evaluate(dataset, run_id, model_fn):
 
     # Hyperparameters
     nhead_temporal = 16
-    nlayers_temporal = 2
+    nlayers_temporal = 4
     nhead_channel = 8
-    nlayers_channel = 2
-    batch_size = 1
-    max_epochs = 50
+    nlayers_channel = 4
+    batch_size = 8
+    max_epochs = 300
 
 
     (X_train, y_train), (X_test, y_test), train_loader, test_loader, label_encoder = load_dataset(dataset, extract_path)
@@ -166,7 +166,7 @@ def train_and_evaluate(dataset, run_id, model_fn):
         with torch.no_grad():
             # Get a single example from the test set
             sample_batch = next(iter(test_loader))[0][:1].to(model.device)
-            output, temporal_attn, channel_attn = model(sample_batch, return_attn=True)
+            output, temporal_attn, channel_attn, _, _ = model(sample_batch, return_attn=True)
 
             # === Plot Temporal Attention (Last Layer, Averaged Heads) ===
             temp_attn_avg = temporal_attn[-1].mean(dim=1)[0].cpu().numpy()  # shape [T, T]
